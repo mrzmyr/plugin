@@ -61,6 +61,128 @@ const tool = ctx.toolName.startsWith(prefix)
   : ctx.toolName;
 ```
 
+## Complexity
+
+Keep cyclomatic complexity at or below 20. Split or extract functions when a single function has too many independent paths. Each condition, logical operator, default parameter, and optional chain adds complexity.
+
+❌ Avoid deeply nested conditions and excessive branching
+
+```ts
+function processRequest({ user, resource, action, context }: RequestParams): boolean {
+  if (!user) {
+    return false;
+  }
+  
+  if (user.role === "admin") {
+    return true;
+  }
+  
+  if (resource.isPublic) {
+    if (action === "read") {
+      return true;
+    }
+    if (action === "write" && user.isVerified) {
+      return true;
+    }
+  }
+  
+  if (resource.ownerId === user.id) {
+    if (action === "read" || action === "write") {
+      return true;
+    }
+    if (action === "delete" && !resource.isShared) {
+      return true;
+    }
+  }
+  
+  if (context?.permissions?.includes(action)) {
+    if (user.groups?.some(g => resource.allowedGroups?.includes(g))) {
+      return true;
+    }
+  }
+  
+  if (user.subscription === "premium") {
+    if (resource.requiresPremium && action === "read") {
+      return true;
+    }
+  }
+  
+  return false;
+}
+```
+
+✅ Use extracted helper functions to reduce complexity
+
+```ts
+function processRequest({ user, resource, action, context }: RequestParams): boolean {
+  if (!user) {
+    return false;
+  }
+  
+  if (user.role === "admin") {
+    return true;
+  }
+  
+  if (canAccessPublicResource({ resource, action, user })) {
+    return true;
+  }
+  
+  if (canAccessOwnedResource({ resource, action, user })) {
+    return true;
+  }
+  
+  if (hasContextPermission({ context, action, user, resource })) {
+    return true;
+  }
+  
+  if (canAccessPremiumResource({ user, resource, action })) {
+    return true;
+  }
+  
+  return false;
+}
+
+function canAccessPublicResource({ resource, action, user }: AccessCheckParams): boolean {
+  if (!resource.isPublic) {
+    return false;
+  }
+  
+  if (action === "read") {
+    return true;
+  }
+  
+  return action === "write" && user.isVerified;
+}
+
+function canAccessOwnedResource({ resource, action, user }: AccessCheckParams): boolean {
+  if (resource.ownerId !== user.id) {
+    return false;
+  }
+  
+  if (action === "read" || action === "write") {
+    return true;
+  }
+  
+  return action === "delete" && !resource.isShared;
+}
+
+function hasContextPermission({ context, action, user, resource }: PermissionCheckParams): boolean {
+  if (!context?.permissions?.includes(action)) {
+    return false;
+  }
+  
+  return user.groups?.some(g => resource.allowedGroups?.includes(g)) ?? false;
+}
+
+function canAccessPremiumResource({ user, resource, action }: AccessCheckParams): boolean {
+  if (user.subscription !== "premium") {
+    return false;
+  }
+  
+  return resource.requiresPremium && action === "read";
+}
+```
+
 ## Error Logging
 
 Every real error path must use the project's structured error helper. This includes thrown errors, returned HTTP/OAuth/JSON errors, and error logs.
